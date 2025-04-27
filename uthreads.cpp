@@ -19,10 +19,13 @@ public:
     int id;
     sigjmp_buf env;
     state state;
+    thread_entry_point entry_point;
 };
 
-std::unordered_map<int, Thread *> threads;
+int quantum_length;
+std::unordered_map<int, Thread*> threads;
 std::queue<int> threadQ;
+Thread* running_thread = nullptr;
 
 
 int uthread_init(int quantum_usecs)
@@ -31,14 +34,11 @@ int uthread_init(int quantum_usecs)
     {
         return -1;
     }
-
-    // Create a queue of integers
-
-
-    Thread main_thread{};
-    main_thread.id = MAIN_THREAD_ID;
-    main_thread.state = RUNNING;
-
+    quantum_length = quantum_usecs;
+    Thread* main_thread = new Thread();
+    main_thread->id = MAIN_THREAD_ID;
+    main_thread->state = RUNNING;
+    threads[main_thread->id] = main_thread;
 
     return 0;
 }
@@ -51,4 +51,10 @@ int uthread_spawn(thread_entry_point entry_point)
     }
     thread thread;
 
+}
+
+
+int uthread_get_tid()
+{
+    return running_thread->id;
 }
