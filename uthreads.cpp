@@ -13,14 +13,16 @@ typedef enum state
 } state;
 
 
-typedef class  Thread
+class  Thread
 {
+public:
     int id;
     sigjmp_buf env;
     state state;
-}thread;
+};
 
-std::queue<thread> threadQ;
+std::unordered_map<int, Thread *> threads;
+std::queue<int> threadQ;
 
 
 int uthread_init(int quantum_usecs)
@@ -33,7 +35,7 @@ int uthread_init(int quantum_usecs)
     // Create a queue of integers
 
 
-    Thread main_thread;
+    Thread main_thread{};
     main_thread.id = MAIN_THREAD_ID;
     main_thread.state = RUNNING;
 
