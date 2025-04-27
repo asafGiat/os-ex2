@@ -15,15 +15,13 @@ typedef enum state
 
 typedef class  Thread
 {
-public:
     int id;
     sigjmp_buf env;
     state state;
+}thread;
 
-}Thread;
+std::queue<thread> threadQ;
 
-std::unordered_map<int, Thread*> threads;
-std::pmr::deque<int> ready_queue;
 
 int uthread_init(int quantum_usecs)
 {
@@ -41,4 +39,14 @@ int uthread_init(int quantum_usecs)
 
 
     return 0;
+}
+
+int uthread_spawn(thread_entry_point entry_point)
+{
+    if (entry_point == nullptr)
+    {
+        fprintf(stderr, "thread library error: The entry point should not be null.\n");
+    }
+    thread thread;
+
 }
