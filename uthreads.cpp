@@ -3,6 +3,9 @@
 #include <queue>  // Include the queue header
 #include <list>
 #include <setjmp.h>
+#include <unordered_map>
+
+#define MAIN_THREAD_ID 0
 
 typedef enum state
 {
@@ -10,13 +13,17 @@ typedef enum state
 } state;
 
 
-typedef struct thread
+typedef class  Thread
 {
+public:
     int id;
     sigjmp_buf env;
     state state;
-}thread;
 
+}Thread;
+
+std::unordered_map<int, Thread*> threads;
+std::pmr::deque<int> ready_queue;
 
 int uthread_init(int quantum_usecs)
 {
@@ -26,7 +33,12 @@ int uthread_init(int quantum_usecs)
     }
 
     // Create a queue of integers
-    std::queue<int> q;
+
+
+    Thread main_thread;
+    main_thread.id = MAIN_THREAD_ID;
+    main_thread.state = RUNNING;
+
 
     return 0;
 }
