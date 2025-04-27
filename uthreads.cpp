@@ -3,6 +3,7 @@
 #include <queue>  // Include the queue header
 #include <list>
 #include <setjmp.h>
+#include <signal.h>
 #include <unordered_map>
 
 #define MAIN_THREAD_ID 0
@@ -40,7 +41,6 @@ public:
 std::unordered_map<int, Thread *> threads;
 std::queue<int> threadQ;
 
-std::queue<thread> threadQ;
 sigjmp_buf env[2];
 
 int uthread_init(int quantum_usecs)
@@ -74,14 +74,14 @@ int uthread_spawn(thread_entry_point entry_point)
         return -1;
     }
 
-    thread thread;
+    Thread thread;
     thread.id = threadQ.size();
     thread.state = READY;
 
     address_t sp = (address_t) stack + STACK_SIZE - sizeof(address_t);
     address_t pc = (address_t) entry_point;
-    sigsetjmp(env[tid], 1);
-    (env[tid]->__jmpbuf)[JB_SP] = translate_address(sp);
-    (env[tid]->__jmpbuf)[JB_PC] = translate_address(pc);
-    sigemptyset(&env[tid]->__saved_mask);
+    sigsetjmp(env[thread.id], 1);
+    (env[thread.id]->__jmpbuf)[JB_SP] = translate_address(sp);
+    (env[thread.id]->__jmpbuf)[JB_PC] = translate_address(pc);
+    sigemptyset(&env[thread.id]->__saved_mask);
 }
