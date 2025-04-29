@@ -13,6 +13,8 @@ typedef unsigned long address_t;
 #define JB_SP 6
 #define JB_PC 7
 
+int current_thread_id = -1;
+
 /* A translation is required when using an address of a variable.
    Use this as a black box in your code. */
 address_t translate_address(address_t addr)
@@ -42,8 +44,6 @@ struct Thread
 
 std::unordered_map<int, Thread *> threads;
 std::queue<int> threadQ;
-
-sigjmp_buf env[2];
 
 int uthread_init(int quantum_usecs)
 {
@@ -84,10 +84,10 @@ int uthread_spawn(thread_entry_point entry_point)
     thread->stack = {};
     address_t sp = (address_t) thread->stack.data() + STACK_SIZE - sizeof(address_t);
     address_t pc = (address_t) entry_point;
-    sigsetjmp(env[thread->id], 1);
-    (env[thread->id]->__jmpbuf)[JB_SP] = translate_address(sp);
-    (env[thread->id]->__jmpbuf)[JB_PC] = translate_address(pc);
-    sigemptyset(&env[thread->id]->__saved_mask);
+    sigsetjmp(thread->env, 1);
+    (thread->env->__jmpbuf)[JB_SP] = translate_address(sp);
+    (thread->env->__jmpbuf)[JB_PC] = translate_address(pc);
+    sigemptyset(&thread->env->__saved_mask);
 
     threads[thread->id] = thread;
     threadQ.push(thread->id);
@@ -107,12 +107,50 @@ int uthread_terminate(int tid)
         // Terminate the entire process
         for (const auto &pair : threads)
         {
-            Thread *thread = pair.second;
+            const Thread *thread = pair.second;
+            if (thread->id != MAIN_THREAD_ID)
+            {
+                delete thread;
+            }
 
         }
+
+        while (!threadQ.empty())
+        {
+            threadQ.pop();
         }
+
+        threads.clear();
         exit(0);
     }
+    // Terminate threads whose id != 0
 
+    // remove from queue
+    std::queue<int> tempQ;
+    while(!threadQ.empty())
+    {
+        int frontId = threadQ.front();
+        threadQ.pop();
+        if (frontId != tid)
+        {
+            tempQ.push(frontId);
+        }
+    }
+    threadQ = tempQ;
+
+    threads.erase(tid);
+
+    Thread *thread = threads[tid];
+
+    // self termination, jump to main thread (id == 0)
+    if (tid == current_thread_id)
+    {
+        Thread *main_thread = threads.at(0);
+        siglongjmp(main_thread->env, 1);
+    }
+    delete thread;
+
+    // if it wasn't self termination, just return
+    return 0;
 
 }
