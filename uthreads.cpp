@@ -1,10 +1,11 @@
 #include "uthreads.h"
 #include <iostream>
 #include <queue>  // Include the queue header
-#include <list>
+#include <memory>
 #include <setjmp.h>
 #include <signal.h>
 #include <unordered_map>
+#include <array>
 
 #define MAIN_THREAD_ID 0
 
@@ -30,12 +31,13 @@ typedef enum state
 } state;
 
 
-class  Thread
+struct Thread
 {
-public:
     int id;
     sigjmp_buf env;
     state state;
+    // std::shared_ptr<char[]> stack;
+    std::array<char, STACK_SIZE> stack;
 };
 
 std::unordered_map<int, Thread *> threads;
@@ -74,14 +76,43 @@ int uthread_spawn(thread_entry_point entry_point)
         return -1;
     }
 
-    Thread thread;
-    thread.id = threadQ.size();
-    thread.state = READY;
+    Thread *thread = new Thread();
+    thread->id = (int)threadQ.size() + 1;
+    thread->state = READY;
 
-    address_t sp = (address_t) stack + STACK_SIZE - sizeof(address_t);
+    // thread.stack = std::make_unique<char[]>(STACK_SIZE);
+    thread->stack = {};
+    address_t sp = (address_t) thread->stack.data() + STACK_SIZE - sizeof(address_t);
     address_t pc = (address_t) entry_point;
-    sigsetjmp(env[thread.id], 1);
-    (env[thread.id]->__jmpbuf)[JB_SP] = translate_address(sp);
-    (env[thread.id]->__jmpbuf)[JB_PC] = translate_address(pc);
-    sigemptyset(&env[thread.id]->__saved_mask);
+    sigsetjmp(env[thread->id], 1);
+    (env[thread->id]->__jmpbuf)[JB_SP] = translate_address(sp);
+    (env[thread->id]->__jmpbuf)[JB_PC] = translate_address(pc);
+    sigemptyset(&env[thread->id]->__saved_mask);
+
+    threads[thread->id] = thread;
+    threadQ.push(thread->id);
+    return thread->id;
+}
+
+int uthread_terminate(int tid)
+{
+    if (threads.count(tid) == 0)
+    {
+        fprintf(stderr, "thread library error: The thread with ID %d does not exist.\n", tid);
+        return -1;
+    }
+
+    if (tid == MAIN_THREAD_ID)
+    {
+        // Terminate the entire process
+        for (const auto &pair : threads)
+        {
+            Thread *thread = pair.second;
+
+        }
+        }
+        exit(0);
+    }
+
+
 }
