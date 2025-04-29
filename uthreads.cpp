@@ -33,6 +33,8 @@ typedef enum state
 } state;
 
 
+
+
 struct Thread
 {
     int id;
@@ -44,6 +46,13 @@ struct Thread
 
 std::unordered_map<int, Thread *> threads;
 std::queue<int> threadQ;
+
+void jump_to_thread(int tid)
+{
+    current_thread_id = tid;
+    Thread *cur_thread = threads.at(tid);
+    siglongjmp(cur_thread->env, 1);
+}
 
 int uthread_init(int quantum_usecs)
 {
@@ -145,12 +154,16 @@ int uthread_terminate(int tid)
     // self termination, jump to main thread (id == 0)
     if (tid == current_thread_id)
     {
-        Thread *main_thread = threads.at(0);
-        siglongjmp(main_thread->env, 1);
+        jump_to_thread(0);
     }
     delete thread;
 
     // if it wasn't self termination, just return
     return 0;
 
+}
+
+int uthread_get_tid()
+{
+    return current_thread_id;
 }
