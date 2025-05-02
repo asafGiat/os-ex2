@@ -14,6 +14,7 @@ typedef unsigned long address_t;
 #define JB_PC 7
 
 int current_thread_id = -1;
+int quantum_usecs = 0;
 
 /* A translation is required when using an address of a variable.
    Use this as a black box in your code. */
@@ -39,7 +40,7 @@ struct Thread
 {
     int id;
     sigjmp_buf env;
-    state state;
+    state thread_state;
     // std::shared_ptr<char[]> stack;
     std::array<char, STACK_SIZE> stack;
 };
@@ -60,15 +61,13 @@ int uthread_init(int quantum_usecs)
     {
         return -1;
     }
-
-    // Create a queue of integers
-
+    ::quantum_usecs = quantum_usecs;
 
     Thread main_thread{};
     main_thread.id = MAIN_THREAD_ID;
-    main_thread.state = RUNNING;
+    main_thread.thread_state = RUNNING;
 
-
+    current_thread_id = MAIN_THREAD_ID;
     return 0;
 }
 
@@ -87,7 +86,7 @@ int uthread_spawn(thread_entry_point entry_point)
 
     Thread *thread = new Thread();
     thread->id = (int)threadQ.size() + 1;
-    thread->state = READY;
+    thread->thread_state = READY;
 
     // thread.stack = std::make_unique<char[]>(STACK_SIZE);
     thread->stack = {};
@@ -160,6 +159,21 @@ int uthread_terminate(int tid)
 
     // if it wasn't self termination, just return
     return 0;
+
+}
+
+int uthread_sleep(int num_quantums)
+{
+    if (num_quantums <= 0)
+    {
+        return -1;
+    }
+
+    if (current_thread_id == MAIN_THREAD_ID)
+    {
+        fprintf(stderr, "thread library error: The main thread cannot sleep.\n");
+        return -1;
+    }
 
 }
 
