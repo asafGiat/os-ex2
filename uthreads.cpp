@@ -39,12 +39,16 @@ public:
     thread_entry_point entry_point;
 };
 
+
+/*======global variables=====*/
 int quantum_length;
 std::unordered_map<int, Thread*> threads;
-std::queue<int> threadQ;
+std::queue<int> readyQ;
 Thread* running_thread = nullptr;
 
 sigjmp_buf env[2];
+
+
 
 int uthread_init(int quantum_usecs)
 {
@@ -61,6 +65,19 @@ int uthread_init(int quantum_usecs)
     return 0;
 }
 
+// Helper: find smallest available tid
+int find_available_id()
+{
+    while (true)
+    {
+        int i = rand();
+        if (threads.find(i) == threads.end())
+        {
+            return i;
+        }
+    }
+}
+
 int uthread_spawn(thread_entry_point entry_point)
 {
     if (entry_point == nullptr)
@@ -69,25 +86,58 @@ int uthread_spawn(thread_entry_point entry_point)
         return -1;
     }
 
-    if (threadQ.size() + 1 > MAX_THREAD_NUM) {
+    if (readyQ.size() + 1 > MAX_THREAD_NUM) {
         fprintf(stderr, "thread library error: The number of threads exceeds the limit.\n");
         return -1;
     }
 
-    Thread thread;
-    thread.id = threadQ.size();
-    thread.state = READY;
+    Thread* thread = new Thread;
+    thread->id = find_available_id();
+    thread->state = READY;
 
     address_t sp = (address_t) stack + STACK_SIZE - sizeof(address_t);
     address_t pc = (address_t) entry_point;
-    sigsetjmp(env[thread.id], 1);
-    (env[thread.id]->__jmpbuf)[JB_SP] = translate_address(sp);
-    (env[thread.id]->__jmpbuf)[JB_PC] = translate_address(pc);
-    sigemptyset(&env[thread.id]->__saved_mask);
+    sigsetjmp(env[thread->id], 1);
+    (env[thread->id]->__jmpbuf)[JB_SP] = translate_address(sp);
+    (env[thread->id]->__jmpbuf)[JB_PC] = translate_address(pc);
+    sigemptyset(&env[thread->id]->__saved_mask);
+
+    readyQ.push(thread->id);
 }
 
+int uthread_terminate(int tid)
+{
+    if (threads.find(tid) == threads.end())
+    {
+        return -1;
+    }
+    if (tid == 0)
+    {
+        // Terminate process
+        for (auto &pair : threads)
+        {
+            delete pair.second;
+        }
+        threads.clear();
+        exit(0);
+    }
+    delete threads[tid];
+    threads.erase(tid);
+
+    return 0;
+}
 
 int uthread_get_tid()
 {
     return running_thread->id;
+}
+
+
+int uthread_block(int tid)
+{
+    if (threads.find(tid) == threads.end())
+    {
+        return -1;
+    }
+
 }
