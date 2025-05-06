@@ -50,7 +50,9 @@ std::deque<int> ready_queue; //deque aloowed more operations than queue
 int current_thread_id = -1;
 int quantum_usecs = 0;
 int total_quantums = 0;
+int sleep_quantums_left = 0; // for uthread_sleep()
 struct itimerval timer; // Timer
+void scheduler(int sig); //function that handles quantum end (implimented at the end)
 
 // Helper: set timer
 void set_timer()
@@ -89,6 +91,14 @@ int uthread_init(int quantum_usecs)
 
     current_thread_id = MAIN_THREAD_ID;
     total_quantums = 1;
+
+    struct sigaction sa = {};
+    sa.sa_handler = scheduler; //set the function to be called after each quantum
+    if (sigaction(SIGVTALRM, &sa, nullptr) < 0)
+    {
+        std::cerr << "system error: sigaction failed" << std::endl;
+        exit(1);
+    }
     set_timer();
     return 0;
 }
@@ -281,5 +291,12 @@ int uthread_get_quantums(int tid)
     return threads[tid]->quantums_run;
 }
 
-
+void scheduler(int sig)
+{
+    /*
+     * here we need to take care of reapitingly taking care of thresds.
+     * handle sleeping threads - minus the sleeping time and set to ready if its 0
+     * switch the running thread
+     */
+}
 
