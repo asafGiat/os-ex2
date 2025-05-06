@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <unordered_map>
 #include <array>
+#include <sys/time.h>
 
 #define MAIN_THREAD_ID 0
 
@@ -13,8 +14,6 @@ typedef unsigned long address_t;
 #define JB_SP 6
 #define JB_PC 7
 
-int current_thread_id = -1;
-int quantum_usecs = 0;
 
 /* A translation is required when using an address of a variable.
    Use this as a black box in your code. */
@@ -41,18 +40,38 @@ struct Thread
     int id;
     sigjmp_buf env;
     state thread_state;
+    int quantums_run;
     // std::shared_ptr<char[]> stack;
     std::array<char, STACK_SIZE> stack;
 };
 
 std::unordered_map<int, Thread *> threads;
-std::queue<int> threadQ;
+std::deque<int> ready_queue; //deque aloowed more operations than queue
+int current_thread_id = -1;
+int quantum_usecs = 0;
+int total_quantums = 0;
+struct itimerval timer; // Timer
+
+// Helper: set timer
+void set_timer()
+{
+    timer.it_value.tv_sec = quantum_usecs / 1000000;
+    timer.it_value.tv_usec = quantum_usecs % 1000000;
+    timer.it_interval.tv_sec = timer.it_value.tv_sec;
+    timer.it_interval.tv_usec = timer.it_value.tv_usec;
+    if (setitimer(ITIMER_VIRTUAL, &timer, nullptr) < 0)
+    {
+        std::cerr << "system error: setitimer failed" << std::endl;
+        exit(1);
+    }
+}
 
 void jump_to_thread(int tid)
 {
     current_thread_id = tid;
     Thread *cur_thread = threads.at(tid);
     siglongjmp(cur_thread->env, 1);
+    //@michael what about state to running and the acttual resuming?
 }
 
 int uthread_init(int quantum_usecs)
@@ -66,10 +85,27 @@ int uthread_init(int quantum_usecs)
     Thread main_thread{};
     main_thread.id = MAIN_THREAD_ID;
     main_thread.thread_state = RUNNING;
+    main_thread.quantums_run=0;
 
     current_thread_id = MAIN_THREAD_ID;
+    total_quantums = 1;
+    set_timer();
     return 0;
 }
+
+// Helper: find smallest available tid
+int find_available_id()
+{
+    while (true)
+    {
+        int i = rand();
+        if (threads.find(i) == threads.end())
+        {
+            return i;
+        }
+    }
+}
+
 
 int uthread_spawn(thread_entry_point entry_point)
 {
@@ -79,14 +115,15 @@ int uthread_spawn(thread_entry_point entry_point)
         return -1;
     }
 
-    if (threadQ.size() + 1 > MAX_THREAD_NUM) {
+    if (ready_queue.size() + 1 > MAX_THREAD_NUM) {
         fprintf(stderr, "thread library error: The number of threads exceeds the limit.\n");
         return -1;
     }
 
     Thread *thread = new Thread();
-    thread->id = (int)threadQ.size() + 1;
+    thread->id = find_available_id();
     thread->thread_state = READY;
+    thread->quantums_run = 0;
 
     // thread.stack = std::make_unique<char[]>(STACK_SIZE);
     thread->stack = {};
@@ -98,7 +135,7 @@ int uthread_spawn(thread_entry_point entry_point)
     sigemptyset(&thread->env->__saved_mask);
 
     threads[thread->id] = thread;
-    threadQ.push(thread->id);
+    ready_queue.push_back(thread->id);
     return thread->id;
 }
 
@@ -123,9 +160,9 @@ int uthread_terminate(int tid)
 
         }
 
-        while (!threadQ.empty())
+        while (!ready_queue.empty())
         {
-            threadQ.pop();
+            ready_queue.pop_front();
         }
 
         threads.clear();
@@ -134,17 +171,17 @@ int uthread_terminate(int tid)
     // Terminate threads whose id != 0
 
     // remove from queue
-    std::queue<int> tempQ;
-    while(!threadQ.empty())
+    std::deque<int> tempQ;
+    while(!ready_queue.empty())
     {
-        int frontId = threadQ.front();
-        threadQ.pop();
+        int frontId = ready_queue.front();
+        ready_queue.pop_front();
         if (frontId != tid)
         {
-            tempQ.push(frontId);
+            tempQ.push_back(frontId);
         }
     }
-    threadQ = tempQ;
+    ready_queue = tempQ;
 
     threads.erase(tid);
 
@@ -160,6 +197,53 @@ int uthread_terminate(int tid)
     // if it wasn't self termination, just return
     return 0;
 
+}
+
+int uthread_block(int tid)
+{
+    if(tid == MAIN_THREAD_ID)
+    {
+        fprintf(stderr, "thread library error: Can not block the main thread\n", tid);
+        return -1;
+    }
+    if(threads.find(tid) == threads.end())
+    {
+        fprintf(stderr, "thread library error: Thread not found\n", tid);
+        return -1;
+    }
+    if(threads[tid]->thread_state==READY)
+    {
+        //remove from queue
+        //if(ready_queue.erase(find(ready_queue.begin(), ready_queue.end(), threads[tid]), ready_queue.end());
+    }
+    if(current_thread_id==tid)
+    {
+        if(threads[tid]->thread_state!=RUNNING)
+        {
+            //throw std::exception("running thread not in running state");
+        }
+        //need to do scedualing
+    }
+    threads[tid]->thread_state=BLOCKED;
+    return 0;
+}
+
+int uthread_resume(int tid)
+{
+    if(threads.find(tid) == threads.end())
+    {
+        fprintf(stderr, "thread library error: Thread not found\n", tid);
+        return -1;
+    }
+    if(threads[tid]->thread_state!=BLOCKED)
+    {
+        return 0;
+    }
+    //if reached here, the thred is a valid blocked thread and we need to handle the resume
+    threads[tid]->thread_state=READY;
+    //todo: make sure the thread isnt in the readyq, and if it is, throw exception
+    ready_queue.push_back(tid);
+    return 0;
 }
 
 int uthread_sleep(int num_quantums)
@@ -181,3 +265,21 @@ int uthread_get_tid()
 {
     return current_thread_id;
 }
+
+int uthread_get_total_quantums()
+{
+    return total_quantums;
+}
+
+int uthread_get_quantums(int tid)
+{
+    if(threads.find(tid) == threads.end())
+    {
+        fprintf(stderr, "thread library error: Thread not found\n", tid);
+        return -1;
+    }
+    return threads[tid]->quantums_run;
+}
+
+
+
