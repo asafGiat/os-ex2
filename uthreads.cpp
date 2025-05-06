@@ -46,7 +46,7 @@ struct Thread
 };
 
 std::unordered_map<int, Thread *> threads;
-std::deque<int> ready_queue; //deque aloowed more operations than queue
+std::deque<int> ready_queue; //deque allows more operations than queue
 int current_thread_id = -1;
 int quantum_usecs = 0;
 int total_quantums = 0;
@@ -73,7 +73,7 @@ void jump_to_thread(int tid)
     current_thread_id = tid;
     Thread *cur_thread = threads.at(tid);
     siglongjmp(cur_thread->env, 1);
-    //@michael what about state to running and the acttual resuming?
+    //@michael what about state to running and the actual resuming?
 }
 
 int uthread_init(int quantum_usecs)
@@ -106,9 +106,8 @@ int uthread_init(int quantum_usecs)
 // Helper: find smallest available tid
 int find_available_id()
 {
-    while (true)
+    for (int i = 1; ; i++)
     {
-        int i = rand();
         if (threads.find(i) == threads.end())
         {
             return i;
@@ -180,7 +179,7 @@ int uthread_terminate(int tid)
     }
     // Terminate threads whose id != 0
 
-    // remove from queue
+    // remove from deque
     std::deque<int> tempQ;
     while(!ready_queue.empty())
     {
@@ -213,27 +212,35 @@ int uthread_block(int tid)
 {
     if(tid == MAIN_THREAD_ID)
     {
-        fprintf(stderr, "thread library error: Can not block the main thread\n", tid);
+        fprintf(stderr, "thread library error: Can not block the main thread\n");
         return -1;
     }
+
     if(threads.find(tid) == threads.end())
     {
-        fprintf(stderr, "thread library error: Thread not found\n", tid);
+        fprintf(stderr, "thread library error: Thread %d not found\n", tid);
         return -1;
     }
+
     if(threads[tid]->thread_state==READY)
     {
         //remove from queue
         //if(ready_queue.erase(find(ready_queue.begin(), ready_queue.end(), threads[tid]), ready_queue.end());
     }
+    if(threads[tid]->thread_state==BLOCKED)
+    {
+        return 0;
+    }
+
     if(current_thread_id==tid)
     {
         if(threads[tid]->thread_state!=RUNNING)
         {
             //throw std::exception("running thread not in running state");
         }
-        //need to do scedualing
+        //need to do scheduling
     }
+
     threads[tid]->thread_state=BLOCKED;
     return 0;
 }
@@ -242,7 +249,7 @@ int uthread_resume(int tid)
 {
     if(threads.find(tid) == threads.end())
     {
-        fprintf(stderr, "thread library error: Thread not found\n", tid);
+        fprintf(stderr, "thread library error: Thread %d not found\n", tid);
         return -1;
     }
     if(threads[tid]->thread_state!=BLOCKED)
@@ -268,7 +275,6 @@ int uthread_sleep(int num_quantums)
         fprintf(stderr, "thread library error: The main thread cannot sleep.\n");
         return -1;
     }
-
 }
 
 int uthread_get_tid()
@@ -294,8 +300,8 @@ int uthread_get_quantums(int tid)
 void scheduler(int sig)
 {
     /*
-     * here we need to take care of reapitingly taking care of thresds.
-     * handle sleeping threads - minus the sleeping time and set to ready if its 0
+     * here we need to take care of reapitingly taking care of threads.
+     * handle sleeping threads - minus the sleeping time and set to ready if it's 0
      * switch the running thread
      */
 }
